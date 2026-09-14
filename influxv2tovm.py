@@ -62,10 +62,12 @@ class InfluxMigrator:
     __client: InfluxDBClient
 
     # noinspection SpellCheckingInspection
-    def __init__(self, bucket: str, vm_url: str, chunksize: int = 100, dry_run: bool = False, pivot: bool = False):
+    def __init__(self, bucket: str, vm_url: str, chunksize: int = 100, dry_run: bool = False, pivot: bool = False,
+                 history_window: str = "100d"):
         self.bucket = bucket
         self.vm_url: str = vm_url
         self.chunksize = chunksize
+        self.history_window = history_window
         # now_datetime_str = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         # self.__progress_file = open(f".migrator_{now_datetime_str}", 'w')
         self.stats = Stats()
@@ -101,7 +103,7 @@ class InfluxMigrator:
 
             chunk_query = f"""
                         from(bucket: "{self.bucket}")
-                        |> range(start: -100d, stop: now())
+                        |> range(start: -{self.history_window}, stop: now())
                         |> filter(fn: (r) => r["{self.__measurement_key}"] == "{meas}")
                         |> limit(n: {self.chunksize}, offset: _offset)
                         """
@@ -264,15 +266,17 @@ def main(args: Dict[str, str]):
         vm_url = os.environ['VM_ADDR']
     dry_run = bool(args.pop("dry_run"))
     pivot = bool(args.pop("pivot"))
+    history_window = args.pop("history_window") or "100d"
 
-    print(f"Dry run {dry_run} Pivot {pivot}")
+    print(f"Dry run {dry_run} Pivot {pivot} History window {history_window}")
 
     for k, v in args.items():
         if v is not None:
             os.environ[k] = v
         logger.info(f"Using {k}={os.getenv(k)}")
 
-    migrator = InfluxMigrator(bucket, vm_url, chunksize=5000, dry_run=dry_run, pivot=pivot)
+    migrator = InfluxMigrator(bucket, vm_url, chunksize=5000, dry_run=dry_run, pivot=pivot,
+                              history_window=history_window)
     migrator.influx_connect()
     migrator.migrate()
 
@@ -347,6 +351,12 @@ if __name__ == "__main__":
         action='store_true',
         default=False,
         help="Pivot entity_id to be measurement",
+    )
+    parser.add_argument(
+        "--history-window",
+        type=str,
+        default="100d",
+        help="How far back to migrate, as an InfluxDB Flux duration (e.g. 100d, 730d, 2y). Default: 100d",
     )
 
     main(vars(parser.parse_args()))
