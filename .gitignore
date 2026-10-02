@@ -3,5 +3,5 @@
 /venv/
 /.whitelist.txt.swp
 /.idea
-
+__pycache__
 **/*.env
